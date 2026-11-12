@@ -1,0 +1,9 @@
+data/
+downloads/
+.venv/
+__pycache__/
+*.pyc
+queue.db
+.env
+.git/
+*.zip

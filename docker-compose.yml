@@ -1,0 +1,22 @@
+services:
+  ytqueue:
+    build: .
+    image: ytqueue:latest
+    container_name: ytqueue
+    init: true
+    restart: unless-stopped
+    # Files are created as your user, not root. Set PUID/PGID in .env (see .env.example).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # Only reachable from this machine. Change to "8765:8765" to allow your LAN (no auth!).
+      - "127.0.0.1:${PORT:-8765}:8765"
+    volumes:
+      - ./data:/data                                  # queue database, settings, yt-dlp updates
+      - ${DOWNLOAD_DIR:-./downloads}:/downloads       # default save location
+      # Extra places you want to be able to save to. Add each one to YTQ_SHORTCUTS as well:
+      # - /mnt/external-drive/videos:/media/external
+    environment:
+      YTQ_AUTO_UPDATE: "1"      # update yt-dlp on every container start
+      YTQ_WORKERS: "1"          # parallel downloads
+      YTQ_RESERVE_MB: "500"     # free space always kept on the target drive
+      YTQ_SHORTCUTS: "/downloads"   # e.g. "/downloads,/media/external"

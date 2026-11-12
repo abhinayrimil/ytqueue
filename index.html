@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ytqueue</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+    --accent: #d1462f; --ok: #2f8f4e; --warn: #b7791f; --err: #c0392b; --bar: #ecebe6;
+    --shade: rgba(20,20,18,.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --card: #1e1e1c; --text: #ececea; --muted: #9a9a94; --line: #2e2e2b;
+            --bar: #2a2a27; --shade: rgba(0,0,0,.6); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 16px; letter-spacing: -.01em; }
+  h1 span { color: var(--accent); }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  textarea, input[type=text] { width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+             background: var(--bg); color: var(--text); font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  textarea { min-height: 84px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  select, button { font: inherit; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--line);
+                   background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:hover { filter: brightness(.96); }
+  button:disabled { opacity: .5; cursor: default; }
+  .spacer { flex: 1; }
+  label.lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* save location */
+  .dest { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 10px 12px;
+          border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .dest-icon { font-size: 18px; }
+  .dest-main { flex: 1; min-width: 0; }
+  .dest-path { font: 13px ui-monospace, Menlo, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .space { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .space .bar { width: 120px; margin: 0; height: 5px; }
+  .space.low { color: var(--warn); } .space.low .bar > div { background: var(--warn); }
+  .space.crit { color: var(--err); } .space.crit .bar > div { background: var(--err); }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 22px 0 10px; flex-wrap: wrap; }
+  .toolbar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; }
+  .counts { color: var(--muted); font-size: 12px; }
+  .job { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+  .top { display: flex; gap: 10px; align-items: flex-start; }
+  .main-info { flex: 1; min-width: 0; }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
+  .url { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap;
+           border: 1px solid currentColor; text-transform: uppercase; letter-spacing: .04em; }
+  .s-queued { color: var(--muted); } .s-checking, .s-downloading, .s-processing { color: var(--accent); }
+  .s-done { color: var(--ok); } .s-error { color: var(--err); } .s-cancelled { color: var(--warn); }
+  .bar { height: 6px; background: var(--bar); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+  .bar.indet > div { width: 30% !important; animation: slide 1.2s infinite ease-in-out; }
+  @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  .meta { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .meta .folder { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .err { color: var(--err); font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .actions button { padding: 3px 8px; font-size: 12px; }
+  .empty { text-align: center; color: var(--muted); padding: 30px; border: 1px dashed var(--line); border-radius: 10px; }
+  .msg { font-size: 12px; color: var(--muted); }
+  .msg.bad { color: var(--err); }
+
+  /* folder browser */
+  .shade { position: fixed; inset: 0; background: var(--shade); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .shade.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 620px;
+           max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  .modal header h3 { margin: 0 0 10px; font-size: 15px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chips button { padding: 3px 9px; font-size: 12px; border-radius: 99px; }
+  .dirs { overflow-y: auto; flex: 1; padding: 6px; min-height: 180px; }
+  .dirs button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px;
+                 border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dirs button:hover { background: var(--bg); }
+  .dirs .none { color: var(--muted); padding: 14px 10px; font-size: 13px; }
+  .modal footer { padding: 10px 16px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>yt<span>queue</span></h1>
+
+  <div class="panel">
+    <textarea id="urls" placeholder="Paste one or more video links (one per line, or any text containing links)…"></textarea>
+
+    <div class="dest">
+      <div class="dest-icon">📁</div>
+      <div class="dest-main">
+        <label class="lbl">Save to</label>
+        <div class="dest-path" id="destPath" title="">…</div>
+        <div class="space" id="destSpace"></div>
+      </div>
+      <button id="changeDir">Change…</button>
+    </div>
+
+    <div class="row">
+      <select id="format">
+        <option value="best">Best quality (mp4)</option>
+        <option value="1080p">Up to 1080p</option>
+        <option value="720p">Up to 720p</option>
+        <option value="480p">Up to 480p</option>
+        <option value="audio">Audio only (mp3)</option>
+      </select>
+      <span class="spacer"></span>
+      <span class="msg" id="msg"></span>
+      <button class="primary" id="add">Add to queue</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <h2>Queue</h2><span class="counts" id="counts"></span>
+    <span class="spacer"></span>
+    <button id="pause">Pause</button>
+    <button id="clear">Clear finished</button>
+  </div>
+  <div id="list"></div>
+</main>
+
+<div class="shade" id="shade">
+  <div class="modal">
+    <header>
+      <h3>Choose a folder</h3>
+      <div class="row" style="margin-top:0">
+        <button id="up" title="Parent folder">↑</button>
+        <input type="text" id="bPath" spellcheck="false">
+        <button id="go">Go</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </header>
+    <div class="dirs" id="dirs"></div>
+    <footer>
+      <span class="space" id="bSpace" style="margin:0"></span>
+      <span class="spacer"></span>
+      <button id="newDir">New folder</button>
+      <button id="bCancel">Cancel</button>
+      <button class="primary" id="bSelect">Use this folder</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let state = { paused: false, jobs: [] };
+let dest = { path: "", disk: null };
+let browsing = { path: "", parent: null };
+
+const api = (path, opts = {}) => fetch(path, {
+  headers: { "Content-Type": "application/json", "X-YTQ": "1" }, ...opts,
+  body: opts.body ? JSON.stringify(opts.body) : undefined
+}).then(r => r.json());
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const bytes = b => { if (b == null) return ""; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return b.toFixed(i > 1 ? 1 : 0) + " " + u[i]; };
+const dur = s => { if (s == null) return ""; const m = Math.floor(s / 60), x = s % 60; return m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : m ? `${m}m ${x}s` : `${x}s`; };
+const base = p => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
+function flash(text, bad = false) {
+  const m = $("#msg"); m.textContent = text; m.className = "msg" + (bad ? " bad" : "");
+  clearTimeout(flash.t); flash.t = setTimeout(() => m.textContent = "", bad ? 7000 : 2500);
+}
+
+function spaceHTML(el, d) {
+  if (!d || d.error) { el.className = "space crit"; el.textContent = d?.error || ""; return; }
+  const used = d.total ? (1 - d.free / d.total) * 100 : 0;
+  const cls = d.free < state.reserve * 2 || used > 97 ? "crit" : used > 90 ? "low" : "";
+  el.className = "space " + cls;
+  const note = !d.writable ? " · not writable" : !d.exists ? " · will be created" : "";
+  el.innerHTML = `<div class="bar"><div style="width:${used.toFixed(1)}%"></div></div>
+    <span>${bytes(d.free)} free of ${bytes(d.total)}${note}</span>`;
+}
+
+async function refreshDisk() {
+  if (!dest.path) return;
+  const d = await api("/api/disk?path=" + encodeURIComponent(dest.path)).catch(() => null);
+  dest.disk = d; spaceHTML($("#destSpace"), d);
+}
+
+function showDest() {
+  $("#destPath").textContent = dest.path; $("#destPath").title = dest.path;
+}
+
+async function setDest(path) {
+  const r = await api("/api/settings", { method: "POST", body: { default_dir: path } });
+  if (r.error) { flash(r.error, true); return false; }
+  dest.path = r.default_dir; showDest(); dest.disk = r.disk; spaceHTML($("#destSpace"), r.disk);
+  return true;
+}
+
+// ---- folder picking: native dialog in the desktop window, built-in browser otherwise
+$("#changeDir").onclick = async () => {
+  if (window.pywebview?.api?.pick_folder) {
+    const p = await window.pywebview.api.pick_folder(dest.path);
+    if (p) setDest(p);
+  } else openBrowser(dest.path);
+};
+
+async function openBrowser(path) { $("#shade").classList.add("open"); await browse(path); }
+function closeBrowser() { $("#shade").classList.remove("open"); }
+
+async function browse(path) {
+  const r = await api("/api/browse?path=" + encodeURIComponent(path || ""));
+  if (r.shortcuts) $("#chips").innerHTML = r.shortcuts.map(s => `<button data-p="${esc(s.path)}">${esc(s.label)}</button>`).join("");
+  if (r.error) { $("#dirs").innerHTML = `<div class="none">${esc(r.error)}</div>`; return; }
+  browsing = r;
+  $("#bPath").value = r.path; $("#up").disabled = !r.parent;
+  $("#dirs").innerHTML = r.dirs.length
+    ? r.dirs.map(d => `<button data-p="${esc(d.path)}">📁 ${esc(d.name)}</button>`).join("")
+    : `<div class="none">No subfolders here.</div>`;
+  spaceHTML($("#bSpace"), r.disk);
+}
+$("#dirs").onclick = e => { const b = e.target.closest("button"); if (b) browse(b.dataset.p); };
+$("#chips").onclick = e => { const b = e.target.closest("button"); if (b) browse(b.dataset.p); };
+$("#up").onclick = () => browsing.parent && browse(browsing.parent);
+$("#go").onclick = () => browse($("#bPath").value);
+$("#bPath").addEventListener("keydown", e => { if (e.key === "Enter") browse($("#bPath").value); });
+$("#bCancel").onclick = closeBrowser;
+$("#shade").onclick = e => { if (e.target.id === "shade") closeBrowser(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeBrowser(); });
+$("#bSelect").onclick = async () => { if (await setDest($("#bPath").value)) closeBrowser(); };
+$("#newDir").onclick = async () => {
+  const name = prompt("New folder name:"); if (!name) return;
+  const r = await api("/api/mkdir", { method: "POST", body: { parent: browsing.path, name } });
+  if (r.error) alert(r.error); else browse(r.path);
+};
+
+// ---- queue
+function render(data) {
+  state = data;
+  if (!dest.path) { dest.path = data.default_dir; showDest(); refreshDisk(); }
+  $("#pause").textContent = data.paused ? "Resume" : "Pause";
+  const c = s => data.jobs.filter(j => s.includes(j.status)).length;
+  $("#counts").textContent = `${c(["checking","downloading","processing"])} active · ${c(["queued"])} waiting · ${c(["done"])} done`
+    + (c(["error"]) ? ` · ${c(["error"])} failed` : "") + (data.paused ? " · paused" : "");
+
+  if (!data.jobs.length) { $("#list").innerHTML = `<div class="empty">Queue is empty. Paste some links above.</div>`; return; }
+
+  $("#list").innerHTML = data.jobs.map(j => {
+    const active = ["checking","downloading","processing"].includes(j.status);
+    const label = { processing: j.format === "audio" ? "converting" : "merging", checking: "checking" }[j.status] || j.status;
+    let acts = "";
+    if (j.status === "queued") acts += `<button data-a="move" data-dir="top" title="Move to top">⤒</button><button data-a="move" data-dir="up" title="Up">↑</button><button data-a="move" data-dir="down" title="Down">↓</button>`;
+    if (j.status === "queued" || active) acts += `<button data-a="cancel">Cancel</button>`;
+    if (j.status === "done" && state.can_open) acts += `<button data-a="open" title="Open the folder">Show</button>`;
+    if (["error","cancelled","done"].includes(j.status)) acts += `<button data-a="retry">${j.status === "done" ? "Again" : "Retry"}</button>`;
+    if (!active) acts += `<button data-a="del" title="Remove from list">✕</button>`;
+    const indet = j.status === "checking" || j.status === "processing" || j.progress == null;
+    const bar = active ? `<div class="bar ${indet ? "indet" : ""}"><div style="width:${j.progress || 0}%"></div></div>` : "";
+    const meta = [];
+    if (j.status === "checking") meta.push("Fetching info & checking disk space…");
+    if (j.status === "downloading" && j.progress != null) meta.push(j.progress.toFixed(1) + "%");
+    if (j.speed) meta.push(bytes(j.speed) + "/s");
+    if (j.eta != null && j.status === "downloading") meta.push("ETA " + dur(j.eta));
+    if (j.size_est) meta.push("~" + bytes(j.size_est));
+    meta.push(esc(j.format));
+    meta.push(`<span class="folder" title="${esc(j.save_dir || "")}">📁 ${esc(base(j.save_dir || state.default_dir))}</span>`);
+    if (j.filepath) meta.push(esc(base(j.filepath)));
+    return `<div class="job" data-id="${j.id}">
+      <div class="top">
+        <div class="main-info">
+          <div class="title">${esc(j.title || (j.status === "queued" ? "Waiting…" : "Fetching info…"))}</div>
+          <div class="url">${esc(j.url)}</div>
+        </div>
+        <span class="badge s-${j.status}">${label}</span>
+        <div class="actions">${acts}</div>
+      </div>
+      ${bar}
+      <div class="meta">${meta.map(m => `<span>${m}</span>`).join("")}</div>
+      ${j.error ? `<div class="err">${esc(j.error)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+const refresh = () => api("/api/jobs").then(render).catch(() => { $("#counts").textContent = "server not reachable"; });
+
+$("#add").onclick = async () => {
+  const urls = $("#urls").value.trim();
+  if (!urls) return;
+  const r = await api("/api/jobs", { method: "POST", body: { urls, format: $("#format").value, save_dir: dest.path } });
+  if (r.error) flash(r.error, true);
+  else { flash(`Added ${r.added}`); $("#urls").value = ""; }
+  refresh(); refreshDisk();
+};
+$("#urls").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#add").click(); });
+$("#pause").onclick = () => api(state.paused ? "/api/resume" : "/api/pause", { method: "POST" }).then(refresh);
+$("#clear").onclick = () => api("/api/clear", { method: "POST" }).then(refresh);
+
+$("#list").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const id = b.closest(".job").dataset.id, a = b.dataset.a;
+  let r;
+  if (a === "del") r = await api(`/api/jobs/${id}`, { method: "DELETE" });
+  else if (a === "move") r = await api(`/api/jobs/${id}/move`, { method: "POST", body: { dir: b.dataset.dir } });
+  else r = await api(`/api/jobs/${id}/${a}`, { method: "POST" });
+  if (r?.error) flash(r.error, true);
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 1000);
+setInterval(refreshDisk, 10000);
+</script>
+</body>
+</html>

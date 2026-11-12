@@ -1,0 +1,12 @@
+# personal data: queue history, settings, downloaded files
+data/
+downloads/
+queue.db
+.env
+.remember/
+
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
