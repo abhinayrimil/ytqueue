@@ -69,7 +69,7 @@ def human(n):
 
 # ---------------------------------------------------------------- filesystem helpers
 def norm(path):
-    return Path(os.path.expandvars(str(path))).expanduser().resolve()
+    return Path(str(path)).expanduser().resolve()
 
 
 def existing_parent(p):
